@@ -1,0 +1,34 @@
+{
+  "name": "burnline",
+  "version": "1.0.0",
+  "description": "A Claude Code statusline showing rate-limit usage with live countdowns.",
+  "bin": {
+    "burnline": "bin/burnline.js"
+  },
+  "files": [
+    "bin/",
+    "statusline.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "statusline",
+    "rate-limit",
+    "usage"
+  ],
+  "author": "Vijeth-Rai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Vijeth-Rai/burnline"
+  },
+  "homepage": "https://github.com/Vijeth-Rai/burnline",
+  "bugs": {
+    "url": "https://github.com/Vijeth-Rai/burnline/issues"
+  }
+}
