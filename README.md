@@ -2,11 +2,9 @@
 
 A Claude Code statusline that shows your rate-limit usage with live countdowns.
 
-```
-◆ Opus  ·  5h ██████░░░░ 40% ↻ 2:14:07  ·  wk ██░┃░░░░░░ 20% ↻ Sun 9am ⏸  6:12:30  ·  ctx ███░░░░░░░ 28% 55k  ·  $1.23
-```
+![burnline in Claude Code](assets/burnline.png)
 
-(Real output is truecolor: bars shade mint → amber → coral as quota burns.)
+Bars shade mint → amber → coral as quota burns.
 
 ## What it shows
 
