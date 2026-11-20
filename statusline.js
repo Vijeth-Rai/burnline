@@ -1,4 +1,69 @@
 // Claude Code status line: rate-limit usage with live countdowns.
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+// rate_limits fallback. Claude Code only puts rate_limits on stdin from rate-limit headers it has
+// seen in this session, and drops a window once its resets_at passes; until it records fresh
+// headers (e.g. after the 5h window rolls over) the field is simply absent. When that happens we
+// ask the endpoint Claude Code's own /usage uses: GET https://api.anthropic.com/api/oauth/usage.
+// UNDOCUMENTED endpoint, authenticated with your Claude Code OAuth access token read from Claude
+// Code's credential store. The token is sent only to api.anthropic.com and is never printed,
+// logged or cached. Fetched by a hidden background process at most once a minute; result cached.
+const CACHE = path.join(os.tmpdir(), "burnline-usage.json");
+const TTL = 60e3;
+
+function oauthToken() {
+  const dir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(dir, ".credentials.json"), "utf8");
+  } catch {
+    if (process.platform !== "darwin") return null;
+    try {
+      raw = require("child_process").execFileSync(
+        "security", ["find-generic-password", "-s", "Claude Code-credentials", "-w"],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch { return null; }
+  }
+  try {
+    const o = JSON.parse(raw).claudeAiOauth;
+    return o?.accessToken && !(o.expiresAt < Date.now()) ? o.accessToken : null;
+  } catch { return null; }
+}
+
+async function refreshUsage() {
+  const token = oauthToken();
+  if (!token) return;
+  const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
+    headers: { Authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) return;
+  const u = await res.json();
+  const w = (x) => (Number.isFinite(x?.utilization) && x.resets_at
+    ? { used_percentage: x.utilization, resets_at: Math.floor(Date.parse(x.resets_at) / 1000) }
+    : undefined);
+  fs.writeFileSync(CACHE, JSON.stringify({ at: Date.now(), rate_limits: { five_hour: w(u.five_hour), seven_day: w(u.seven_day) } }));
+}
+
+// cached limits; if the cache is over a minute old, claim it and refresh in the background
+function cachedLimits() {
+  let c = {};
+  try { c = JSON.parse(fs.readFileSync(CACHE, "utf8")); } catch {}
+  if (!(Date.now() - (c.at || 0) < TTL)) {
+    try {
+      fs.writeFileSync(CACHE, JSON.stringify({ ...c, at: Date.now() }));
+      require("child_process").spawn(process.execPath, [__filename, "--refresh-usage"],
+        { detached: true, stdio: "ignore", windowsHide: true }).unref();
+    } catch {}
+  }
+  const live = (x) => (x?.resets_at * 1000 > Date.now() ? x : undefined);
+  return { five_hour: live(c.rate_limits?.five_hour), seven_day: live(c.rate_limits?.seven_day) };
+}
+
+if (process.argv[2] === "--refresh-usage") return void refreshUsage().catch(() => {});
+
 let raw = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (c) => (raw += c));
@@ -72,7 +137,7 @@ process.stdin.on("end", () => {
   const parts = [];
   parts.push(rgb(198, 160, 246, `◆ ${d.model?.display_name ?? "claude"}`));
 
-  const rl = d.rate_limits;
+  const rl = d.rate_limits?.five_hour || d.rate_limits?.seven_day ? d.rate_limits : cachedLimits();
   if (rl?.five_hour) parts.push(win("5h", 5 * 3600, rl.five_hour));
   if (rl?.seven_day) parts.push(win("wk", 7 * 86400, rl.seven_day));
   if (!rl?.five_hour && !rl?.seven_day) parts.push(dim("◇ warming up"));
